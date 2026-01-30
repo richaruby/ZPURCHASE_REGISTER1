@@ -1,0 +1,4 @@
+@EndUserText.label: 'SD for PUR REG2 CE'
+define service ZSD_PURCHASE_REG2_CE {
+  expose ZCE_PURCHASE_REGISTER_NEW;
+}
