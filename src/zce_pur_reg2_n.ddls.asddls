@@ -130,7 +130,7 @@ define view entity ZCE_PUR_REG2_N
       max(n.AccountingDocumentType)                                   as AccountingDocumentType,
       max(n.AccountingDocumentHeaderText)                             as AccountingDocumentHeaderText,
       max(p.ConsumptionTaxCtrlCode)                                   as ConsumptionTaxCtrlCode,
-//      max(A.YY1_Note1_MIH)                                            as Notes,
+      max(A.YY1_Note1_MIH)                                            as Notes,
       @Semantics.amount.currencyCode: 'DocumentCurrency'
       max(g.NetPriceAmount)                                           as NetPriceAmount,
 

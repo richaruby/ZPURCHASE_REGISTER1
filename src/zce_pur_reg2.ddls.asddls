@@ -1,4 +1,4 @@
- @AbapCatalog.viewEnhancementCategory: [#NONE]
+@AbapCatalog.viewEnhancementCategory: [#NONE]
 @AccessControl.authorizationCheck: #NOT_REQUIRED
 @EndUserText.label: 'Purchase Register'
 @Metadata.ignorePropagatedAnnotations: true
@@ -15,7 +15,7 @@ define view entity ZCE_PUR_REG2
     P_Language : sylangu
   as select from    I_SupplierInvoiceAPI01                                            as A
 
-     inner join I_SuplrInvcItemPurOrdRefAPI01                                     as b   on  b.SupplierInvoice = A.SupplierInvoice
+    left outer join I_SuplrInvcItemPurOrdRefAPI01                                     as b   on  b.SupplierInvoice = A.SupplierInvoice
                                                                                              and b.FiscalYear      = A.FiscalYear
 
     left outer join zzce_pur_tax_agg                                                  as k   on  k.OriginalReferenceDocument = A.SupplierInvoiceWthnFiscalYear
@@ -77,11 +77,6 @@ define view entity ZCE_PUR_REG2
                                                                                              and acc.CompanyCode               = A.CompanyCode
                                                                                              and acc.OriginalReferenceDocument = A.SupplierInvoiceWthnFiscalYear
 
-    //  /* --- ADDED JOIN FOR VEHICLE DETAILS --- */
-   left outer join I_MaterialDocumentItem_2                                          as MatDoc on  MatDoc.PurchaseOrder     = b.PurchaseOrder
-                                                                                                and MatDoc.PurchaseOrderItem = b.PurchaseOrderItem
-//   left outer join ZI_PO_VEHICLE_AGG                                          as MatDoc on  MatDoc.PurchaseOrder     = b.PurchaseOrder
-//                                                                                               and MatDoc.PurchaseOrderItem = b.PurchaseOrderItem
 {
 
       /* --- GROUP BY FIELDS --- */
@@ -98,21 +93,11 @@ define view entity ZCE_PUR_REG2
   key A.DocumentDate,
   key A.PostingDate,
 //  key k.GLAccount,
-
   key A.SupplierInvoiceWthnFiscalYear,
 //  key k.AccountingDocument,
       max( k.AccountingDocument)                                      as AccountingDocument,
       max(d.PurchaseOrderType)                                        as PurchaseOrderType,
       max(k.GLAccount)                                                as GLAccount,
-      
-        /* --- ADDED VEHICLE FIELDS (Using MAX for aggregation) --- */
-            max(MatDoc.YY1_fuel_MMI)                                        as fuel_type,
-            max(MatDoc.YY1_Transmission_typ_MMI)                            as transmission_type,
-            max(MatDoc.YY1_Engine_no_MMI)                                   as engine_no,
-            max(MatDoc.YY1_vin_no_MMI)                                      as vin_no,
-            max(MatDoc.YY1_colour_MMI)                                      as colour,
-      
-      
       /* --- NON-KEY FIELDS (AGGREGATED) --- */
 
       max(k.OriginalReferenceDocument)                                as OriginalReferenceDocument,
@@ -125,11 +110,11 @@ define view entity ZCE_PUR_REG2
       k.TransactionCurrency                                           as TransactionCurrency,
       @Semantics.amount.currencyCode: 'TransactionCurrency'
       max(k.AmountInTransactionCurrency)                              as AmountInTransactionCurrency,
-//      pe.ConditionCurrency                                            as ConditionCurrency,
+      pe.ConditionCurrency                                            as ConditionCurrency,
       max(n.AccountingDocumentType)                                   as AccountingDocumentType,
       max(n.AccountingDocumentHeaderText)                             as AccountingDocumentHeaderText,
       max(p.ConsumptionTaxCtrlCode)                                   as ConsumptionTaxCtrlCode,
-//      max(A.YY1_Note1_MIH)                                            as Notes,
+      max(A.YY1_Note1_MIH)                                            as Notes,
       @Semantics.amount.currencyCode: 'DocumentCurrency'
       max(g.NetPriceAmount)                                           as NetPriceAmount,
 
@@ -337,13 +322,13 @@ define view entity ZCE_PUR_REG2
       max(M.BusinessPartnerPanNumber)                                 as Suppan,
       max(f.BPAddrStreetName)                                         as Address,
 
-      @Semantics.amount.currencyCode: 'DisplayCurrencyINR'
+      @Semantics.amount.currencyCode: 'ConditionCurrency'
       max(pe.Insurance)                                               as Insurance,
-      @Semantics.amount.currencyCode: 'DisplayCurrencyINR'
+      @Semantics.amount.currencyCode: 'ConditionCurrency'
       max(pe.Discount)                                                as Discount,
-      @Semantics.amount.currencyCode: 'DisplayCurrencyINR'
+      @Semantics.amount.currencyCode: 'ConditionCurrency'
       max(pe.Commission)                                              as Commission,
-      @Semantics.amount.currencyCode: 'DisplayCurrencyINR'
+      @Semantics.amount.currencyCode: 'ConditionCurrency'
       max(pe.PackingForwarding)                                       as PackingForwarding,
 
 
@@ -508,21 +493,12 @@ group by
   d.PurchaseOrder,
   g.PurchaseOrderItem,
   A.DocumentCurrency,
-//  pe.ConditionCurrency,
+  pe.ConditionCurrency,
   k.TransactionCurrency,
   f.Supplier,
   b.Plant,
   A.DocumentDate,
   A.PostingDate,
-  A.SupplierInvoiceWthnFiscalYear,
-  pe.CurrencyINR,
-  pe.CurrencyUSD
-//   MatDoc.FuelType,
-// MatDoc.TransmissionType,
-//  MatDoc.EngineNo,
-// MatDoc.VinNo,
-//  MatDoc.Colour
-  
-  
+  A.SupplierInvoiceWthnFiscalYear
 //  k.GLAccount,
 //  k.AccountingDocument

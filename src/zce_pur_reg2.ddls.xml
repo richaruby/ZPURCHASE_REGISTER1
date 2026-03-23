@@ -5,7 +5,7 @@
    <DDLS>
     <DDLNAME>ZCE_PUR_REG2</DDLNAME>
     <DDLANGUAGE>E</DDLANGUAGE>
-    <DDTEXT>Purchase Register New</DDTEXT>
+    <DDTEXT>Purchase Register</DDTEXT>
     <SOURCE_TYPE>W</SOURCE_TYPE>
    </DDLS>
   </asx:values>

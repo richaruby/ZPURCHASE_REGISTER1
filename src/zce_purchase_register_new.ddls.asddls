@@ -18,6 +18,18 @@ define custom entity ZCE_PURCHASE_REGISTER_NEW
                 label               : 'Purchase Register Details',
                 position            : 10 }]
 
+      @UI.lineItem                  : [{ label: 'GRN - Material Document Year', position: 10, importance: #HIGH }]
+      @UI.identification            : [{ position: 01 }]
+  key materialdocumentyear          : abap.char(10);
+
+      @UI.lineItem                  : [{ label: 'GRN - Material Document', position: 02, importance: #HIGH }]
+      @UI.identification            : [{ position: 02 }]
+  key materialdocument              : abap.char(10);
+
+      @UI.lineItem                  : [{ label: 'GRN - Material Document Item', position: 03, importance: #HIGH }]
+      @UI.identification            : [{ position: 03 }]
+  key materialdocumentitem          : abap.char(10);
+
       /* ===== Keys ===== */
       @UI.lineItem                  : [{label: 'Invoicing Party', position: 10 ,importance: #HIGH }]
       @UI.identification            : [{ position: 10 }]
@@ -59,22 +71,49 @@ define custom entity ZCE_PURCHASE_REGISTER_NEW
       @UI.identification            : [{ position: 90 }]
   key Plant                         : werks_d;
 
-      @UI.lineItem                  : [{label: 'Document Date', position: 100 ,importance: #HIGH }]
-      @UI.identification            : [{ position: 100 }]
-  key DocumentDate                  : budat;
-
-      @UI.lineItem                  : [{label: 'Posting Date', position: 110 ,importance: #HIGH }]
-      @UI.identification            : [{ position: 110 }]
-  key PostingDate                   : budat;
-
       @UI.lineItem                  : [{label: 'Supl Inv & Fisc Year', position: 120 ,importance: #HIGH }]
       @UI.identification            : [{ position: 120 }]
   key SupplierInvoiceWthnFiscalYear : abap.char(20);
 
-//      /* ===== Header / Accounting ===== */
-//      @UI.lineItem                  : [{ label: 'Original Reference Document', position: 130 }]
-//      @UI.identification            : [{ position: 130 }]
-//      OriginalReferenceDocument     : awkey;
+      @UI.lineItem                  : [{ label: 'Reversal Indicator', position: 121, importance: #HIGH }]
+      @UI.identification            : [{ position: 121 }]
+      ReversalIndicator             : abap.char(1);
+
+      @UI.lineItem                  : [{label: 'Posting Date', position: 110 ,importance: #HIGH }]
+      @UI.identification            : [{ position: 110 }]
+      PostingDate                   : budat;
+
+      @UI.lineItem                  : [{label: 'Document Date', position: 100 ,importance: #HIGH }]
+      @UI.identification            : [{ position: 100 }]
+      DocumentDate                  : bldat;
+
+      @UI.lineItem                  : [{ label: 'GRN - Goods Movement Type', position: 04, importance: #HIGH }]
+      @UI.identification            : [{ position: 04 }]
+      goodsmovementtype             : abap.char(3);
+
+      @UI.lineItem                  : [{ label: 'GRN - Quantity in Base Unit', position: 05, importance: #HIGH }]
+      @UI.identification            : [{ position: 05 }]
+      @Semantics.quantity.unitOfMeasure: 'entryunit'
+      quantityinbaseunit            : abap.quan(13,3);
+
+      @UI.hidden                    : true
+      @UI.lineItem                  : [{ label: 'GRN - Entry Unit', position: 06, importance: #HIGH }]
+      @UI.identification            : [{ position: 06 }]
+      entryunit                     : abap.unit(3);
+
+      @UI.lineItem                  : [{ label: 'GRN - Posting Date', position: 07, importance: #HIGH }]
+      @UI.identification            : [{ position: 07 }]
+      postingdate_grn               : abap.dats;
+
+      @UI.lineItem                  : [{ label: 'GRN - Total Goods Movement Amount', position: 08, importance: #HIGH }]
+      @UI.identification            : [{ position: 08 }]
+      @Semantics.amount.currencyCode: 'companycodecurrency'
+      totalgoodsmvtamtincccrcy      : wrbtr;
+
+      @UI.hidden                    : true
+      @UI.lineItem                  : [{ label: 'GRN - Company Code Currency', position: 09, importance: #HIGH }]
+      @UI.identification            : [{ position: 09 }]
+      companycodecurrency           : waers;
 
       @UI.lineItem                  : [{ label: 'Journal Entry', position: 140, importance: #HIGH }]
       @UI.identification            : [{ position: 140 }]
@@ -82,16 +121,19 @@ define custom entity ZCE_PURCHASE_REGISTER_NEW
       @EndUserText.label            : 'Journal Entry(Acc Doc)'
       AccountingDocument            : belnr_d;
 
+      @UI.hidden                    : true
       @UI.lineItem                  : [{ label: 'Journal Entry Item', position: 150 }]
       @UI.identification            : [{ position: 150 }]
       AccountingDocumentItem        : buzei;
 
       @UI.lineItem                  : [{ label: 'Debit Credit Code', position: 160 }]
       @UI.identification            : [{ position: 160 }]
+      //      @UI.hidden                    : true
       DebitCreditCode               : shkzg;
 
       @UI.lineItem                  : [{ label: 'Posting Key', position: 170 }]
       @UI.identification            : [{ position: 170 }]
+      //      @UI.hidden                    : true
       PostingKey                    : bschl;
 
       @UI.lineItem                  : [{ label: 'Supplier Invoice Ref', position: 180 }]
@@ -113,6 +155,10 @@ define custom entity ZCE_PURCHASE_REGISTER_NEW
       @UI.lineItem                  : [{ label: 'GL Account', position: 220 }]
       @UI.identification            : [{ position: 220 }]
       GLAccount                     : hkont;
+
+      @UI.lineItem                  : [{ label: 'GL Account Name', position: 225 }]
+      @UI.identification            : [{ position: 225 }]
+      GLAccountName                 : abap.char( 60 );
 
       /* ===== Currency ===== */
       @UI.lineItem                  : [{ label: 'Document Currency', position: 230 }]
@@ -149,13 +195,16 @@ define custom entity ZCE_PURCHASE_REGISTER_NEW
       ExchangeRate                  : abap.dec(9,5);
 
       /* ===== Amounts ===== */
-      @UI.lineItem                  : [{ label: 'Converted Inv Amt', position: 310 }]
-      @UI.identification            : [{ position: 310 }]
-      InvoiceGrossAmount            : abap.dec(15,2);
 
-//      @UI.lineItem                  : [{ label: 'Total Invoice Amount(₹)', position: 320 }]
-//      @UI.identification            : [{ position: 320 }]
-//      InvoiceAmount                 : abap.dec(15,2);
+      //   Commented by Omkar
+      //      @UI.lineItem                  : [{ label: 'Converted Inv Amt', position: 310 }]
+      //      @UI.identification            : [{ position: 310 }]
+      //      InvoiceGrossAmount            : abap.dec(15,2);
+
+      //   Added by Omkar
+      @UI.lineItem                  : [{ label: 'Total Invoice Amount(₹)', position: 320 }]
+      @UI.identification            : [{ position: 320 }]
+      InvoiceGrossAmount            : abap.dec(15,2);
 
       @UI.lineItem                  : [{ label: 'Total Invoice Amount($)', position: 330 }]
       @UI.identification            : [{ position: 330 }]
@@ -201,17 +250,49 @@ define custom entity ZCE_PURCHASE_REGISTER_NEW
       @UI.identification            : [{ position: 430 }]
       ChaCharge                     : abap.dec(15,2);
 
+      @UI.lineItem                  : [{ label: 'CGST G/L', position: 431 }]
+      @UI.identification            : [{ position: 431 }]
+      CGSTGlAccount                 : hkont;
+
+      @UI.lineItem                  : [{ label: 'CGST G/L Name', position: 432 }]
+      @UI.identification            : [{ position: 441 }]
+      CGSTGlAccountName             : abap.char( 60 );
+
       @UI.lineItem                  : [{ label: 'CGST Amt', position: 440 }]
       @UI.identification            : [{ position: 440 }]
       CGSTAmt                       : abap.dec(15,2);
+
+      @UI.lineItem                  : [{ label: 'SGST G/L', position: 441 }]
+      @UI.identification            : [{ position: 441 }]
+      SGSTGlAccount                 : hkont;
+
+      @UI.lineItem                  : [{ label: 'SGST G/L Name', position: 442 }]
+      @UI.identification            : [{ position: 441 }]
+      SGSTGlAccountName             : abap.char( 60 );
 
       @UI.lineItem                  : [{ label: 'SGST Amt', position: 450 }]
       @UI.identification            : [{ position: 450 }]
       SGSTAmt                       : abap.dec(15,2);
 
+      @UI.lineItem                  : [{ label: 'IGST G/L', position: 451 }]
+      @UI.identification            : [{ position: 451 }]
+      IGSTGlAccount                 : hkont;
+
+      @UI.lineItem                  : [{ label: 'IGST G/L Name', position: 452 }]
+      @UI.identification            : [{ position: 452 }]
+      IGSTGlAccountName             : abap.char( 60 );
+
       @UI.lineItem                  : [{ label: 'IGST Amt', position: 460 }]
       @UI.identification            : [{ position: 460 }]
       IGSTAmt                       : abap.dec(15,2);
+
+      @UI.lineItem                  : [{ label: 'UGST G/L', position: 461 }]
+      @UI.identification            : [{ position: 461 }]
+      UGSTGlAccount                 : hkont;
+
+      @UI.lineItem                  : [{ label: 'UGST G/L Name', position: 462 }]
+      @UI.identification            : [{ position: 462 }]
+      UGSTGlAccountName             : abap.char( 60 );
 
       @UI.lineItem                  : [{ label: 'UGST Amt', position: 470 }]
       @UI.identification            : [{ position: 470 }]
@@ -297,6 +378,7 @@ define custom entity ZCE_PURCHASE_REGISTER_NEW
 
       @UI.lineItem                  : [{ label: 'Dlvry Cost Cndn Type', position: 670 }]
       @UI.identification            : [{ position: 670 }]
+      @UI.hidden                    : true
       SuplrInvcDeliveryCostCndnType : kschl;
 
       @UI.lineItem                  : [{ label: 'Supl Inv Item Text', position: 680 }]
@@ -401,16 +483,29 @@ define custom entity ZCE_PURCHASE_REGISTER_NEW
       @UI.identification            : [{ position: 920 }]
       Material                      : matnr;
 
+      @UI.lineItem                  : [{ label: 'Material Description', position: 925 }]
+      @UI.identification            : [{ position: 925 }]
+      MaterialDescription           : abap.char( 60 );
+
       @UI.lineItem                  : [{ label: 'Receiving Quantity', position: 930 }]
       @UI.identification            : [{ position: 930 }]
       @Semantics.quantity.unitOfMeasure: 'PurchaseOrderQuantityUnit'
       QuantityInPurchaseOrderUnit   : erfmg;
 
-      @UI.lineItem                  : [{ label: 'Rcvng Qty Unit', position: 940 }]
+      //  Commented by Omkar
+      //      @UI.lineItem                  : [{ label: 'Rcvng Qty Unit', position: 940 }]
+      //      @UI.identification            : [{ position: 940 }]
+      //      PurchaseOrderQuantityUnit     : erfme;
+
+      //  Added by Omkar
+      @UI.lineItem                  : [{ label: 'UoM (Unit of Measure)', position: 940 }]
       @UI.identification            : [{ position: 940 }]
       PurchaseOrderQuantityUnit     : erfme;
+
       /* ===== Others ===== */
       @UI.lineItem                  : [{ label: 'Notes', position: 950 }]
       @UI.identification            : [{ position: 950 }]
       Notes                         : abap.char(255);
+
+
 }

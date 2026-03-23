@@ -14,14 +14,23 @@ define view entity zzce_pur_tax_agg
   AccountingDocument,
   OriginalReferenceDocument,
   FiscalYear,
-  @Semantics: { amount : {currencyCode: 'TransactionCurrency'} }
-  sum( AmountInTransactionCurrency ) as AmountInTransactionCurrency,
   -- include currency so we can annotate amounts correctly
   TransactionCurrency,
+  @Semantics: { amount : {currencyCode: 'TransactionCurrency'} }
+  sum( AmountInTransactionCurrency ) as AmountInTransactionCurrency,
+//   sum(
+//    case when TransactionTypeDetermination = 'JOI'
+//         then cast( AmountInTransactionCurrency as abap.dec(15,2) )
+//         else cast( 0 as abap.dec(15,2) )
+//    end
+//  )                                  as AmountInTransactionCurrency,
+  
 
   @Semantics.amount.currencyCode: 'TransactionCurrency'
   sum(
     case when TransactionTypeDetermination = 'JIC'
+         then cast( AmountInTransactionCurrency as abap.dec(15,2) )
+         when TransactionTypeDetermination = 'JOC'
          then cast( AmountInTransactionCurrency as abap.dec(15,2) )
          else cast( 0 as abap.dec(15,2) )
     end
@@ -31,13 +40,17 @@ define view entity zzce_pur_tax_agg
   sum(
     case when TransactionTypeDetermination = 'JIU'
          then cast( AmountInTransactionCurrency as abap.dec(15,2) )
+         when TransactionTypeDetermination = 'JOU'
+         then cast( AmountInTransactionCurrency as abap.dec(15,2) )
          else cast( 0 as abap.dec(15,2) )
     end
   )                                  as UGST,
 
   @Semantics.amount.currencyCode: 'TransactionCurrency'
   sum(
-    case when TransactionTypeDetermination = 'JII'
+    case when TransactionTypeDetermination  = 'JII'
+         then cast( AmountInTransactionCurrency as abap.dec(15,2) )
+         when TransactionTypeDetermination = 'JOI'
          then cast( AmountInTransactionCurrency as abap.dec(15,2) )
          else cast( 0 as abap.dec(15,2) )
     end
@@ -46,6 +59,8 @@ define view entity zzce_pur_tax_agg
   @Semantics.amount.currencyCode: 'TransactionCurrency'
   sum(
     case when TransactionTypeDetermination = 'JIS'
+         then cast( AmountInTransactionCurrency as abap.dec(15,2) )
+         when TransactionTypeDetermination = 'JOS'
          then cast( AmountInTransactionCurrency as abap.dec(15,2) )
          else cast( 0 as abap.dec(15,2) )
     end
@@ -99,21 +114,32 @@ define view entity zzce_pur_tax_agg
       when TransactionTypeDetermination = 'JIC'
            and cast(AmountInTransactionCurrency as abap.dec(15,2)) > 0
       then GLAccount
+      when TransactionTypeDetermination = 'JOC'
+           and cast(AmountInTransactionCurrency as abap.dec(15,2)) > 0
+      then GLAccount
       when TransactionTypeDetermination = 'JIU'
+           and cast(AmountInTransactionCurrency as abap.dec(15,2)) > 0
+      then GLAccount
+      when TransactionTypeDetermination = 'JOU'
            and cast(AmountInTransactionCurrency as abap.dec(15,2)) > 0
       then GLAccount
       when TransactionTypeDetermination = 'JII'
            and cast(AmountInTransactionCurrency as abap.dec(15,2)) > 0
       then GLAccount
+      when TransactionTypeDetermination = 'JOI'
+           and cast(AmountInTransactionCurrency as abap.dec(15,2)) > 0
+      then GLAccount
       else ''
     end
   )                                  as GLAccount
+
+
 }
 group by
   TaxItemGroup,
   AccountingDocument,
   OriginalReferenceDocument,
   FiscalYear,
-//  IN_HSNOrSACCode,
-//  AmountInTransactionCurrency,
+  //  IN_HSNOrSACCode,
+  //  AmountInTransactionCurrency,
   TransactionCurrency

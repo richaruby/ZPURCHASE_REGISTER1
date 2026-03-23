@@ -5,7 +5,7 @@
    <SRVD>
     <NAME>ZSD_PUR_REG1</NAME>
     <TYPE>SRVD/SRV</TYPE>
-    <DESCRIPTION>Purchase register</DESCRIPTION>
+    <DESCRIPTION>Purchase Register</DESCRIPTION>
     <LANGUAGE>EN</LANGUAGE>
     <MASTER_LANGUAGE>EN</MASTER_LANGUAGE>
     <SOURCE_URI>./zsd_pur_reg1/source/main</SOURCE_URI>

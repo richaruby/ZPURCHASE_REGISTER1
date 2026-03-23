@@ -5,7 +5,7 @@
    <DDLS>
     <DDLNAME>ZCE_PURCHASE_REGISTER_NEW</DDLNAME>
     <DDLANGUAGE>E</DDLANGUAGE>
-    <DDTEXT>Purchase Register</DDTEXT>
+    <DDTEXT>Custom Entity for Purchase Register</DDTEXT>
     <SOURCE_TYPE>Q</SOURCE_TYPE>
    </DDLS>
   </asx:values>

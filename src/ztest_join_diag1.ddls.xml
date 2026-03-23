@@ -5,7 +5,7 @@
    <DDLS>
     <DDLNAME>ZTEST_JOIN_DIAG1</DDLNAME>
     <DDLANGUAGE>E</DDLANGUAGE>
-    <DDTEXT>Purchase Register New</DDTEXT>
+    <DDTEXT>ZTEST_JOIN_DIAG1</DDTEXT>
     <SOURCE_TYPE>W</SOURCE_TYPE>
    </DDLS>
   </asx:values>
