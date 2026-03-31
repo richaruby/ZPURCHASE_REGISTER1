@@ -182,6 +182,9 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
     SORT it_base ASCENDING BY purchaseorder purchaseorderitem supplierinvoice supplierinvoiceitem.
     DELETE ADJACENT DUPLICATES FROM it_base COMPARING purchaseorder purchaseorderitem supplierinvoice supplierinvoiceitem.
 
+    ""For Import Cases Only One Line item required
+    DELETE it_base WHERE ( documentcurrency = 'USD' AND suplrinvcdeliverycostcndntype IS NOT INITIAL ).
+
     IF  it_base IS NOT INITIAL.
 
       SELECT FROM i_accountingdocumentjournal
@@ -202,19 +205,27 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
              documentdate,
              referencedocument,
              referencedocumentitem,
-             debitamountinbalancetranscrcy,
+             debitamountincocodecrcy AS debitamountinbalancetranscrcy,
              creditamountinbalancetranscrcy,
              isreversal,
              isreversed
       FOR ALL ENTRIES IN @it_base
-      WHERE purchasingdocument     = @it_base-purchaseorder
-      AND   purchasingdocumentitem = @it_base-purchaseorderitem
+      WHERE purchasingdocument     =  @it_base-purchaseorder
+      AND   purchasingdocumentitem =  @it_base-purchaseorderitem
       AND   ledger                 = '0L'
+      AND   accountingdocument     IN @lr_accountingdocument "27.03.2026
       AND   postingdate            IN @lr_postingdt
-      AND   referencedocument      = @it_base-referencedocument
+      AND   referencedocument      =  @it_base-referencedocument
       AND transactiontypedetermination IS NOT INITIAL
       AND taxcode IS NOT INITIAL
       INTO TABLE @DATA(it_acc_re).
+
+      LOOP AT it_base ASSIGNING FIELD-SYMBOL(<check_base>).
+        READ TABLE it_acc_re ASSIGNING FIELD-SYMBOL(<check_acc_re>) WITH KEY purchasingdocument = <check_base>-purchaseorder.
+        IF sy-subrc <> 0.
+          DELETE it_base.
+        ENDIF.
+      ENDLOOP.
 
       IF it_acc_re IS NOT INITIAL.
 
@@ -288,11 +299,10 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
                                                                                  companycode            = <lfs_acc_re>-companycode.
             IF sy-subrc = 0.
               MOVE-CORRESPONDING <lfs_acco_re> TO <lfs_base>.
-**              <lfs_base>-supplierinvoiceitemamount   = <lfs_acc_re>-debitamountinbalancetranscrcy.
               READ TABLE it_acco_re INTO DATA(ls_acco_re) WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
                                                                    fiscalyear                     = <lfs_acc_re>-fiscalyear
                                                                    companycode                    = <lfs_acc_re>-companycode
-                                                                   taxabsltbaseamountincocodecrcy = lv_debitamount "<lfs_acc_re>-debitamountinbalancetranscrcy
+                                                                   taxabsltbaseamountincocodecrcy = lv_debitamount
                                                                    transactiontypedetermination   = 'JIC'.
               IF sy-subrc = 0.
                 <lfs_base>-cgst    = ls_acco_re-absltamtinadditionalcurrency1.
@@ -307,7 +317,7 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
               READ TABLE it_acco_re INTO DATA(ls_acco_re1) WITH KEY accountingdocument = <lfs_acc_re>-accountingdocument
                                                                      fiscalyear        = <lfs_acc_re>-fiscalyear
                                                                      companycode       = <lfs_acc_re>-companycode
-                                                                     taxabsltbaseamountincocodecrcy = lv_debitamount "<lfs_acc_re>-debitamountinbalancetranscrcy
+                                                                     taxabsltbaseamountincocodecrcy = lv_debitamount
                                                                      transactiontypedetermination = 'JIS'.
               IF sy-subrc = 0.
                 <lfs_base>-sgst    = ls_acco_re1-absltamtinadditionalcurrency1 .
@@ -322,7 +332,7 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
               READ TABLE it_acco_re INTO DATA(ls_acco_re2)  WITH KEY accountingdocument = <lfs_acc_re>-accountingdocument
                                                                      fiscalyear         = <lfs_acc_re>-fiscalyear
                                                                      companycode        = <lfs_acc_re>-companycode
-                                                                     taxabsltbaseamountincocodecrcy = lv_debitamount "<lfs_acc_re>-debitamountinbalancetranscrcy
+                                                                     taxabsltbaseamountincocodecrcy = lv_debitamount
                                                                      transactiontypedetermination = 'JIU'.
               IF sy-subrc = 0.
                 <lfs_base>-ugst    = ls_acco_re2-absltamtinadditionalcurrency1.
@@ -336,7 +346,7 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
               READ TABLE it_acco_re INTO DATA(ls_acco_re3) WITH KEY accountingdocument     = <lfs_acc_re>-accountingdocument
                                                                     fiscalyear             = <lfs_acc_re>-fiscalyear
                                                                     companycode            = <lfs_acc_re>-companycode
-                                                                    taxabsltbaseamountincocodecrcy = lv_debitamount "<lfs_acc_re>-debitamountinbalancetranscrcy
+                                                                    taxabsltbaseamountincocodecrcy = lv_debitamount
                                                                     transactiontypedetermination = 'JII'.
               IF sy-subrc = 0.
                 <lfs_base>-igst    = ls_acco_re3-absltamtinadditionalcurrency1.
@@ -356,13 +366,13 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
                 <lfs_base>-glaccount = ls_acco_re-glaccount.
               ENDIF.
 
-              <lfs_base>-amountintransactioncurrency = lv_totamount +    "<lfs_acc_re>-debitamountinbalancetranscrcy +
+              <lfs_base>-amountintransactioncurrency = lv_totamount +
                                                        <lfs_base>-cgst +
                                                        <lfs_base>-sgst +
                                                        <lfs_base>-igst +
                                                        <lfs_base>-ugst.
 
-              IF <lfs_acc_re>-isreversal = 'X'." AND lv_totamount GT 0.
+              IF <lfs_acc_re>-isreversal = 'X'.
                 <lfs_base>-amountintransactioncurrency = <lfs_base>-amountintransactioncurrency * ( -1 ).
               ENDIF.
 
@@ -370,14 +380,23 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
 
             ENDIF.
 *-----------------------------------------------------------------------
-* For Freight & Insurance
+* For Freight
 *-----------------------------------------------------------------------
             CLEAR : ls_acco_re, ls_acco_re1, ls_acco_re2, ls_acco_re3, lv_debitamount, lv_totamount.
             READ TABLE it_acco_re INTO ls_acco_re WITH KEY accountingdocument           = <lfs_acc_re>-accountingdocument
                                                            fiscalyear                   = <lfs_acc_re>-fiscalyear
                                                            companycode                  = <lfs_acc_re>-companycode
                                                            supplier                     = ' '
-                                                           transactiontypedetermination = 'KBS'.
+                                                           transactiontypedetermination = 'KBS'
+                                                           glaccount                    = '0000450073'.
+            IF ls_acco_re IS INITIAL.
+              READ TABLE it_acco_re INTO ls_acco_re WITH KEY accountingdocument           = <lfs_acc_re>-accountingdocument
+                                                             fiscalyear                   = <lfs_acc_re>-fiscalyear
+                                                             companycode                  = <lfs_acc_re>-companycode
+                                                             supplier                     = ' '
+                                                             transactiontypedetermination = 'KBS'
+                                                             glaccount                    = '0000450019'.
+            ENDIF.
             IF  ls_acco_re IS NOT INITIAL.
               APPEND INITIAL LINE TO it_base_temp ASSIGNING FIELD-SYMBOL(<lfs_base_temp>).
               MOVE-CORRESPONDING <lfs_base> TO <lfs_base_temp>.
@@ -463,14 +482,408 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
                 <lfs_base_temp>-glaccount = ls_acco_re-glaccount.
               ENDIF.
 
-**              IF <lfs_acc_re>-isreversal = 'X'.
-**                lv_debitamount = lv_debitamount * ( -1 ).
-**              ENDIF.
+              <lfs_base_temp>-amountintransactioncurrency = lv_debitamount + <lfs_base_temp>-cgst + <lfs_base_temp>-sgst + <lfs_base_temp>-igst + <lfs_base_temp>-ugst.
+              <lfs_base_temp>-supplierinvoiceitemamount   = lv_debitamount. "lv_totamount.
+
+            ENDIF.
+*-----------------------------------------------------------------------
+* For Discount
+*-----------------------------------------------------------------------
+            CLEAR : ls_acco_re, ls_acco_re1, ls_acco_re2, ls_acco_re3, lv_debitamount, lv_totamount.
+            READ TABLE it_acco_re INTO ls_acco_re WITH KEY accountingdocument           = <lfs_acc_re>-accountingdocument
+                                                           fiscalyear                   = <lfs_acc_re>-fiscalyear
+                                                           companycode                  = <lfs_acc_re>-companycode
+                                                           supplier                     = ' '
+                                                           transactiontypedetermination = 'KBS'
+                                                           glaccount                    = '0000310012'.
+            IF  ls_acco_re IS NOT INITIAL.
+              APPEND INITIAL LINE TO it_base_temp ASSIGNING <lfs_base_temp>.
+              MOVE-CORRESPONDING <lfs_base> TO <lfs_base_temp>.
+              MOVE-CORRESPONDING <lfs_acco_re> TO <lfs_base_temp>.
+              <lfs_base_temp>-supplierinvoiceitem = <lfs_base_temp>-supplierinvoiceitem + 1.
+
+              CLEAR : <lfs_base_temp>-cgst, <lfs_base_temp>-cgstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-sgst, <lfs_base_temp>-sgstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-igst, <lfs_base_temp>-igstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-ugst, <lfs_base_temp>-ugstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-supplierinvoiceitemamount, <lfs_base_temp>-glaccount,
+                      <lfs_base_temp>-amountintransactioncurrency, lv_debitamount, lv_totamount,
+                      <lfs_base_temp>-totalgoodsmvtamtincccrcy, <lfs_base_temp>-quantityinbaseunit.
+
+              lv_totamount   = ls_acco_re-absltamtinadditionalcurrency1.
+              lv_debitamount = lv_totamount.
+              IF ls_acco_re-debitcreditcode = 'H'.
+                lv_debitamount = lv_debitamount * ( -1 ).
+              ENDIF.
+              READ TABLE it_acco_re INTO ls_acco_re WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                             fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                             companycode                    = <lfs_acc_re>-companycode
+                                                             taxabsltbaseamountincocodecrcy = lv_totamount
+                                                             transactiontypedetermination   = 'JIC'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-cgst    = ls_acco_re-absltamtinadditionalcurrency1.
+                <lfs_base_temp>-cgstgl  = ls_acco_re-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re-taxcode.
+                IF ls_acco_re-debitcreditcode = 'H'.
+                  <lfs_base_temp>-cgst  = <lfs_base_temp>-cgst * ( -1 ).
+                ENDIF.
+              ENDIF.
+
+              " SGST
+              READ TABLE it_acco_re INTO ls_acco_re1 WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                              fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                              companycode                    = <lfs_acc_re>-companycode
+                                                              taxabsltbaseamountincocodecrcy = lv_totamount
+                                                              transactiontypedetermination   = 'JIS'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-sgst    = ls_acco_re1-absltamtinadditionalcurrency1 .
+                <lfs_base_temp>-sgstgl  = ls_acco_re1-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re1-taxcode.
+                IF ls_acco_re1-debitcreditcode = 'H'.
+                  <lfs_base_temp>-sgst  = <lfs_base_temp>-sgst * ( -1 ).
+                ENDIF.
+              ENDIF.
+
+              " UGST
+              READ TABLE it_acco_re INTO ls_acco_re2  WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                               fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                               companycode                    = <lfs_acc_re>-companycode
+                                                               taxabsltbaseamountincocodecrcy = lv_totamount
+                                                               transactiontypedetermination   = 'JIU'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-ugst    = ls_acco_re2-absltamtinadditionalcurrency1.
+                <lfs_base_temp>-ugstgl  = ls_acco_re2-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re2-taxcode.
+                IF ls_acco_re2-debitcreditcode = 'H'.
+                  <lfs_base_temp>-ugst = <lfs_base_temp>-ugst * ( -1 ).
+                ENDIF.
+              ENDIF.
+              " IGST
+              READ TABLE it_acco_re INTO ls_acco_re3 WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                              fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                              companycode                    = <lfs_acc_re>-companycode
+                                                              taxabsltbaseamountincocodecrcy = lv_totamount
+                                                              transactiontypedetermination   = 'JII'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-igst    = ls_acco_re3-absltamtinadditionalcurrency1.
+                <lfs_base_temp>-igstgl  = ls_acco_re3-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re3-taxcode.
+                IF ls_acco_re3-debitcreditcode = 'H'.
+                  <lfs_base_temp>-igst  = <lfs_base_temp>-igst * ( -1 ).
+                ENDIF.
+              ENDIF.
+              CLEAR : ls_acco_re.
+              READ TABLE it_acco_re INTO ls_acco_re WITH KEY accountingdocument      = <lfs_acc_re>-accountingdocument
+                                                             fiscalyear              = <lfs_acc_re>-fiscalyear
+                                                             companycode             = <lfs_acc_re>-companycode
+                                                             financialaccounttype    = 'K '.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-glaccount = ls_acco_re-glaccount.
+              ENDIF.
 
               <lfs_base_temp>-amountintransactioncurrency = lv_debitamount + <lfs_base_temp>-cgst + <lfs_base_temp>-sgst + <lfs_base_temp>-igst + <lfs_base_temp>-ugst.
               <lfs_base_temp>-supplierinvoiceitemamount   = lv_debitamount. "lv_totamount.
 
             ENDIF.
+*-----------------------------------------------------------------------
+* Repair & Maintenance
+*-----------------------------------------------------------------------
+            CLEAR : ls_acco_re, ls_acco_re1, ls_acco_re2, ls_acco_re3, lv_debitamount, lv_totamount.
+            READ TABLE it_acco_re INTO ls_acco_re WITH KEY accountingdocument           = <lfs_acc_re>-accountingdocument
+                                                           fiscalyear                   = <lfs_acc_re>-fiscalyear
+                                                           companycode                  = <lfs_acc_re>-companycode
+                                                           supplier                     = ' '
+                                                           transactiontypedetermination = 'KBS'
+                                                           glaccount                    = '0000450010'.
+            IF  ls_acco_re IS NOT INITIAL.
+              APPEND INITIAL LINE TO it_base_temp ASSIGNING <lfs_base_temp>.
+              MOVE-CORRESPONDING <lfs_base> TO <lfs_base_temp>.
+              MOVE-CORRESPONDING <lfs_acco_re> TO <lfs_base_temp>.
+              <lfs_base_temp>-supplierinvoiceitem = <lfs_base_temp>-supplierinvoiceitem + 1.
+
+              CLEAR : <lfs_base_temp>-cgst, <lfs_base_temp>-cgstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-sgst, <lfs_base_temp>-sgstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-igst, <lfs_base_temp>-igstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-ugst, <lfs_base_temp>-ugstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-supplierinvoiceitemamount, <lfs_base_temp>-glaccount,
+                      <lfs_base_temp>-amountintransactioncurrency, lv_debitamount, lv_totamount,
+                      <lfs_base_temp>-totalgoodsmvtamtincccrcy, <lfs_base_temp>-quantityinbaseunit.
+
+              lv_totamount   = ls_acco_re-absltamtinadditionalcurrency1.
+              lv_debitamount = lv_totamount.
+              IF ls_acco_re-debitcreditcode = 'H'.
+                lv_debitamount = lv_debitamount * ( -1 ).
+              ENDIF.
+              READ TABLE it_acco_re INTO ls_acco_re WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                             fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                             companycode                    = <lfs_acc_re>-companycode
+                                                             taxabsltbaseamountincocodecrcy = lv_totamount
+                                                             transactiontypedetermination   = 'JIC'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-cgst    = ls_acco_re-absltamtinadditionalcurrency1.
+                <lfs_base_temp>-cgstgl  = ls_acco_re-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re-taxcode.
+                IF ls_acco_re-debitcreditcode = 'H'.
+                  <lfs_base_temp>-cgst  = <lfs_base_temp>-cgst * ( -1 ).
+                ENDIF.
+              ENDIF.
+
+              " SGST
+              READ TABLE it_acco_re INTO ls_acco_re1 WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                              fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                              companycode                    = <lfs_acc_re>-companycode
+                                                              taxabsltbaseamountincocodecrcy = lv_totamount
+                                                              transactiontypedetermination   = 'JIS'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-sgst    = ls_acco_re1-absltamtinadditionalcurrency1 .
+                <lfs_base_temp>-sgstgl  = ls_acco_re1-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re1-taxcode.
+                IF ls_acco_re1-debitcreditcode = 'H'.
+                  <lfs_base_temp>-sgst  = <lfs_base_temp>-sgst * ( -1 ).
+                ENDIF.
+              ENDIF.
+
+              " UGST
+              READ TABLE it_acco_re INTO ls_acco_re2  WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                               fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                               companycode                    = <lfs_acc_re>-companycode
+                                                               taxabsltbaseamountincocodecrcy = lv_totamount
+                                                               transactiontypedetermination   = 'JIU'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-ugst    = ls_acco_re2-absltamtinadditionalcurrency1.
+                <lfs_base_temp>-ugstgl  = ls_acco_re2-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re2-taxcode.
+                IF ls_acco_re2-debitcreditcode = 'H'.
+                  <lfs_base_temp>-ugst = <lfs_base_temp>-ugst * ( -1 ).
+                ENDIF.
+              ENDIF.
+              " IGST
+              READ TABLE it_acco_re INTO ls_acco_re3 WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                              fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                              companycode                    = <lfs_acc_re>-companycode
+                                                              taxabsltbaseamountincocodecrcy = lv_totamount
+                                                              transactiontypedetermination   = 'JII'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-igst    = ls_acco_re3-absltamtinadditionalcurrency1.
+                <lfs_base_temp>-igstgl  = ls_acco_re3-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re3-taxcode.
+                IF ls_acco_re3-debitcreditcode = 'H'.
+                  <lfs_base_temp>-igst  = <lfs_base_temp>-igst * ( -1 ).
+                ENDIF.
+              ENDIF.
+              CLEAR : ls_acco_re.
+              READ TABLE it_acco_re INTO ls_acco_re WITH KEY accountingdocument      = <lfs_acc_re>-accountingdocument
+                                                             fiscalyear              = <lfs_acc_re>-fiscalyear
+                                                             companycode             = <lfs_acc_re>-companycode
+                                                             financialaccounttype    = 'K '.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-glaccount = ls_acco_re-glaccount.
+              ENDIF.
+
+              <lfs_base_temp>-amountintransactioncurrency = lv_debitamount + <lfs_base_temp>-cgst + <lfs_base_temp>-sgst + <lfs_base_temp>-igst + <lfs_base_temp>-ugst.
+              <lfs_base_temp>-supplierinvoiceitemamount   = lv_debitamount. "lv_totamount.
+
+            ENDIF.
+
+*-----------------------------------------------------------------------
+* For Rebate & discount
+*-----------------------------------------------------------------------
+            CLEAR : ls_acco_re, ls_acco_re1, ls_acco_re2, ls_acco_re3, lv_debitamount, lv_totamount.
+            READ TABLE it_acco_re INTO ls_acco_re WITH KEY accountingdocument           = <lfs_acc_re>-accountingdocument
+                                                           fiscalyear                   = <lfs_acc_re>-fiscalyear
+                                                           companycode                  = <lfs_acc_re>-companycode
+                                                           supplier                     = ' '
+                                                           transactiontypedetermination = 'KBS'
+                                                           glaccount                    = '0000450056'.
+            IF  ls_acco_re IS NOT INITIAL.
+              APPEND INITIAL LINE TO it_base_temp ASSIGNING <lfs_base_temp>.
+              MOVE-CORRESPONDING <lfs_base> TO <lfs_base_temp>.
+              MOVE-CORRESPONDING <lfs_acco_re> TO <lfs_base_temp>.
+              <lfs_base_temp>-supplierinvoiceitem = <lfs_base_temp>-supplierinvoiceitem + 1.
+
+              CLEAR : <lfs_base_temp>-cgst, <lfs_base_temp>-cgstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-sgst, <lfs_base_temp>-sgstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-igst, <lfs_base_temp>-igstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-ugst, <lfs_base_temp>-ugstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-supplierinvoiceitemamount, <lfs_base_temp>-glaccount,
+                      <lfs_base_temp>-amountintransactioncurrency, lv_debitamount, lv_totamount,
+                      <lfs_base_temp>-totalgoodsmvtamtincccrcy, <lfs_base_temp>-quantityinbaseunit.
+
+              lv_totamount   = ls_acco_re-absltamtinadditionalcurrency1.
+              lv_debitamount = lv_totamount.
+              IF ls_acco_re-debitcreditcode = 'H'.
+                lv_debitamount = lv_debitamount * ( -1 ).
+              ENDIF.
+              READ TABLE it_acco_re INTO ls_acco_re WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                             fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                             companycode                    = <lfs_acc_re>-companycode
+                                                             taxabsltbaseamountincocodecrcy = lv_totamount
+                                                             transactiontypedetermination   = 'JIC'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-cgst    = ls_acco_re-absltamtinadditionalcurrency1.
+                <lfs_base_temp>-cgstgl  = ls_acco_re-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re-taxcode.
+                IF ls_acco_re-debitcreditcode = 'H'.
+                  <lfs_base_temp>-cgst  = <lfs_base_temp>-cgst * ( -1 ).
+                ENDIF.
+              ENDIF.
+
+              " SGST
+              READ TABLE it_acco_re INTO ls_acco_re1 WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                              fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                              companycode                    = <lfs_acc_re>-companycode
+                                                              taxabsltbaseamountincocodecrcy = lv_totamount
+                                                              transactiontypedetermination   = 'JIS'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-sgst    = ls_acco_re1-absltamtinadditionalcurrency1 .
+                <lfs_base_temp>-sgstgl  = ls_acco_re1-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re1-taxcode.
+                IF ls_acco_re1-debitcreditcode = 'H'.
+                  <lfs_base_temp>-sgst  = <lfs_base_temp>-sgst * ( -1 ).
+                ENDIF.
+              ENDIF.
+
+              " UGST
+              READ TABLE it_acco_re INTO ls_acco_re2  WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                               fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                               companycode                    = <lfs_acc_re>-companycode
+                                                               taxabsltbaseamountincocodecrcy = lv_totamount
+                                                               transactiontypedetermination   = 'JIU'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-ugst    = ls_acco_re2-absltamtinadditionalcurrency1.
+                <lfs_base_temp>-ugstgl  = ls_acco_re2-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re2-taxcode.
+                IF ls_acco_re2-debitcreditcode = 'H'.
+                  <lfs_base_temp>-ugst = <lfs_base_temp>-ugst * ( -1 ).
+                ENDIF.
+              ENDIF.
+              " IGST
+              READ TABLE it_acco_re INTO ls_acco_re3 WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                              fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                              companycode                    = <lfs_acc_re>-companycode
+                                                              taxabsltbaseamountincocodecrcy = lv_totamount
+                                                              transactiontypedetermination   = 'JII'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-igst    = ls_acco_re3-absltamtinadditionalcurrency1.
+                <lfs_base_temp>-igstgl  = ls_acco_re3-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re3-taxcode.
+                IF ls_acco_re3-debitcreditcode = 'H'.
+                  <lfs_base_temp>-igst  = <lfs_base_temp>-igst * ( -1 ).
+                ENDIF.
+              ENDIF.
+              CLEAR : ls_acco_re.
+              READ TABLE it_acco_re INTO ls_acco_re WITH KEY accountingdocument      = <lfs_acc_re>-accountingdocument
+                                                             fiscalyear              = <lfs_acc_re>-fiscalyear
+                                                             companycode             = <lfs_acc_re>-companycode
+                                                             financialaccounttype    = 'K '.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-glaccount = ls_acco_re-glaccount.
+              ENDIF.
+
+              <lfs_base_temp>-amountintransactioncurrency = lv_debitamount + <lfs_base_temp>-cgst + <lfs_base_temp>-sgst + <lfs_base_temp>-igst + <lfs_base_temp>-ugst.
+              <lfs_base_temp>-supplierinvoiceitemamount   = lv_debitamount. "lv_totamount.
+
+            ENDIF.
+*-----------------------------------------------------------------------
+* For Packaging & Forwarding
+*-----------------------------------------------------------------------
+            CLEAR : ls_acco_re, ls_acco_re1, ls_acco_re2, ls_acco_re3, lv_debitamount, lv_totamount.
+            READ TABLE it_acco_re INTO ls_acco_re WITH KEY accountingdocument           = <lfs_acc_re>-accountingdocument
+                                                           fiscalyear                   = <lfs_acc_re>-fiscalyear
+                                                           companycode                  = <lfs_acc_re>-companycode
+                                                           supplier                     = ' '
+                                                           transactiontypedetermination = 'KBS'
+                                                           glaccount                    = '0000410109'.
+            IF  ls_acco_re IS NOT INITIAL.
+              APPEND INITIAL LINE TO it_base_temp ASSIGNING <lfs_base_temp>.
+              MOVE-CORRESPONDING <lfs_base> TO <lfs_base_temp>.
+              MOVE-CORRESPONDING <lfs_acco_re> TO <lfs_base_temp>.
+              <lfs_base_temp>-supplierinvoiceitem = <lfs_base_temp>-supplierinvoiceitem + 1.
+
+              CLEAR : <lfs_base_temp>-cgst, <lfs_base_temp>-cgstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-sgst, <lfs_base_temp>-sgstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-igst, <lfs_base_temp>-igstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-ugst, <lfs_base_temp>-ugstgl, <lfs_base_temp>-taxcode,
+                      <lfs_base_temp>-supplierinvoiceitemamount, <lfs_base_temp>-glaccount,
+                      <lfs_base_temp>-amountintransactioncurrency, lv_debitamount, lv_totamount,
+                      <lfs_base_temp>-totalgoodsmvtamtincccrcy, <lfs_base_temp>-quantityinbaseunit.
+
+              lv_totamount   = ls_acco_re-absltamtinadditionalcurrency1.
+              lv_debitamount = lv_totamount.
+              IF ls_acco_re-debitcreditcode = 'H'.
+                lv_debitamount = lv_debitamount * ( -1 ).
+              ENDIF.
+              READ TABLE it_acco_re INTO ls_acco_re WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                             fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                             companycode                    = <lfs_acc_re>-companycode
+                                                             taxabsltbaseamountincocodecrcy = lv_totamount
+                                                             transactiontypedetermination   = 'JIC'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-cgst    = ls_acco_re-absltamtinadditionalcurrency1.
+                <lfs_base_temp>-cgstgl  = ls_acco_re-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re-taxcode.
+                IF ls_acco_re-debitcreditcode = 'H'.
+                  <lfs_base_temp>-cgst  = <lfs_base_temp>-cgst * ( -1 ).
+                ENDIF.
+              ENDIF.
+
+              " SGST
+              READ TABLE it_acco_re INTO ls_acco_re1 WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                              fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                              companycode                    = <lfs_acc_re>-companycode
+                                                              taxabsltbaseamountincocodecrcy = lv_totamount
+                                                              transactiontypedetermination   = 'JIS'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-sgst    = ls_acco_re1-absltamtinadditionalcurrency1 .
+                <lfs_base_temp>-sgstgl  = ls_acco_re1-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re1-taxcode.
+                IF ls_acco_re1-debitcreditcode = 'H'.
+                  <lfs_base_temp>-sgst  = <lfs_base_temp>-sgst * ( -1 ).
+                ENDIF.
+              ENDIF.
+
+              " UGST
+              READ TABLE it_acco_re INTO ls_acco_re2  WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                               fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                               companycode                    = <lfs_acc_re>-companycode
+                                                               taxabsltbaseamountincocodecrcy = lv_totamount
+                                                               transactiontypedetermination   = 'JIU'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-ugst    = ls_acco_re2-absltamtinadditionalcurrency1.
+                <lfs_base_temp>-ugstgl  = ls_acco_re2-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re2-taxcode.
+                IF ls_acco_re2-debitcreditcode = 'H'.
+                  <lfs_base_temp>-ugst = <lfs_base_temp>-ugst * ( -1 ).
+                ENDIF.
+              ENDIF.
+              " IGST
+              READ TABLE it_acco_re INTO ls_acco_re3 WITH KEY accountingdocument             = <lfs_acc_re>-accountingdocument
+                                                              fiscalyear                     = <lfs_acc_re>-fiscalyear
+                                                              companycode                    = <lfs_acc_re>-companycode
+                                                              taxabsltbaseamountincocodecrcy = lv_totamount
+                                                              transactiontypedetermination   = 'JII'.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-igst    = ls_acco_re3-absltamtinadditionalcurrency1.
+                <lfs_base_temp>-igstgl  = ls_acco_re3-glaccount.
+                <lfs_base_temp>-taxcode = ls_acco_re3-taxcode.
+                IF ls_acco_re3-debitcreditcode = 'H'.
+                  <lfs_base_temp>-igst  = <lfs_base_temp>-igst * ( -1 ).
+                ENDIF.
+              ENDIF.
+              CLEAR : ls_acco_re.
+              READ TABLE it_acco_re INTO ls_acco_re WITH KEY accountingdocument      = <lfs_acc_re>-accountingdocument
+                                                             fiscalyear              = <lfs_acc_re>-fiscalyear
+                                                             companycode             = <lfs_acc_re>-companycode
+                                                             financialaccounttype    = 'K '.
+              IF sy-subrc = 0.
+                <lfs_base_temp>-glaccount = ls_acco_re-glaccount.
+              ENDIF.
+
+              <lfs_base_temp>-amountintransactioncurrency = lv_debitamount + <lfs_base_temp>-cgst + <lfs_base_temp>-sgst + <lfs_base_temp>-igst + <lfs_base_temp>-ugst.
+              <lfs_base_temp>-supplierinvoiceitemamount   = lv_debitamount. "lv_totamount.
+
+            ENDIF.
+
           ELSE.
             CONTINUE.
           ENDIF.
@@ -478,8 +891,10 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
         ENDLOOP.
 
 *-----------------------------------------------------------------------
-* For Freight & Insurance
+* For Freight, Discount, Rebate, Packaging & Forwarding
 *-----------------------------------------------------------------------
+        SORT it_base_temp ASCENDING BY purchaseorder supplierinvoice.
+        DELETE ADJACENT DUPLICATES FROM it_base_temp COMPARING purchaseorder supplierinvoice.
         APPEND LINES OF it_base_temp TO it_base.
 
       ENDIF.
@@ -504,497 +919,6 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
 
     ENDIF.
 
-*-----------------------------------------------------------------------
-* STO Process
-*-----------------------------------------------------------------------
-
-    SELECT FROM i_purchaseorderapi01 AS a
-    LEFT OUTER JOIN i_supplier AS b ON b~supplier = a~supplier
-       FIELDS a~purchaseordertype,
-              a~supplier,
-              b~suppliername,
-              a~purchaseorder,
-              a~purchaseorderdate
-              WHERE purchaseorder IN @lr_purchaseorder
-              AND   ( purchaseordertype = 'ZSUB' OR purchaseordertype = 'ZST' )
-              AND a~companycode IN @lr_cc
-              INTO TABLE @DATA(it_po_type).
-
-
-    IF it_po_type IS NOT INITIAL.
-      DATA(it_sto_po) = it_po_type.
-      DELETE it_sto_po WHERE purchaseordertype <> 'ZUB'
-                         AND purchaseordertype <> 'ZST'.
-
-      IF it_sto_po IS NOT INITIAL.
-
-        SELECT FROM i_materialdocumentitem_2 AS a1
-        LEFT OUTER JOIN c_purchaseorderhistorydex AS b ON  b~purchaseorder = a1~purchaseorder
-                                                       AND b~purchaseorderitem = a1~purchaseorderitem
-        FIELDS
-              a1~materialdocumentyear,
-              a1~materialdocument,
-              a1~materialdocumentitem,
-              a1~goodsmovementtype,
-              a1~quantityinbaseunit,
-              a1~entryunit,
-              a1~postingdate AS postingdate_grn ,
-              a1~totalgoodsmvtamtincccrcy,
-              a1~companycodecurrency,
-              a1~deliverydocument,
-              a1~deliverydocumentitem,
-              b~purchasinghistorydocument,
-              b~purchaseorder,
-              b~purchaseorderitem
-           FOR ALL ENTRIES IN @it_sto_po
-           WHERE a1~purchaseorder = @it_sto_po-purchaseorder
-           AND purchasinghistorycategory = 'L'
-           AND a1~goodsmovementtype IN ( '101', '105' ) AND a1~purchaseorder NE '' AND a1~goodsmovementiscancelled = ''
-           INTO TABLE @DATA(it_pur_hist).
-
-        IF it_pur_hist IS NOT INITIAL.
-
-          SELECT FROM i_billingdocumentitem
-          FIELDS billingdocument,
-                 billingdocumentdate,
-                 referencesddocument,
-                 referencesddocumentitem,
-                 companycode,
-                 payerparty,
-                 plant,
-                 billingquantity,
-                 billingquantityunit,
-                 billingdocumentitem,
-                 salesdocument,
-                 salesdocumentitem,
-                 netamount,
-                 taxamount
-
-          FOR ALL ENTRIES IN @it_pur_hist
-          WHERE referencesddocument = @it_pur_hist-purchasinghistorydocument
-          INTO TABLE @DATA(it_bill_doc_hist).
-
-          IF it_bill_doc_hist IS NOT INITIAL.
-
-            IF lr_supplierinvoice IS NOT INITIAL.
-              DELETE it_bill_doc_hist WHERE billingdocument NOT IN lr_supplierinvoice.
-            ENDIF.
-
-            SELECT FROM i_accountingdocumentjournal
-            FIELDS
-             purchasingdocument,
-             purchasingdocumentitem,
-             accountingdocument,
-             accountingdocumentitem,
-             companycode,
-             fiscalyear,
-             glaccount,
-             taxcode,
-             ledger,
-             documentreferenceid,
-             transactiontypedetermination,
-             supplier,
-             financialaccounttype,
-             postingdate,
-             documentdate,
-             referencedocument,
-             debitamountinbalancetranscrcy,
-             isreversal,
-             isreversed,
-             debitcreditcode
-            FOR ALL ENTRIES IN @it_bill_doc_hist
-            WHERE purchasingdocument  = @it_bill_doc_hist-salesdocument
-            AND transactiontypedetermination IS NOT INITIAL
-            AND taxcode IS NOT INITIAL
-            AND ledger = '0L'
-            INTO TABLE @DATA(it_acc).
-
-            SORT it_acc BY documentreferenceid.
-
-            IF it_acc IS NOT INITIAL.
-
-              SELECT FROM i_accountingdocumentjournal
-              FIELDS purchasingdocument,
-                     purchasingdocumentitem,
-                     accountingdocument,
-                     accountingdocumentitem,
-                     companycode,
-                     fiscalyear,
-                     glaccount,
-                     taxcode,
-                     ledger,
-                     postingdate,
-                     documentdate,
-                     documentreferenceid,
-                     transactiontypedetermination,
-                     accountingdocumenttype,
-                     creditamountincocodecrcy,
-                     debitamountinbalancetranscrcy,
-                     financialaccounttype,
-                     supplier,
-                     accountassignmenttype,
-                     debitcreditcode
-              FOR ALL ENTRIES IN @it_acc
-              WHERE documentreferenceid = @it_acc-documentreferenceid
-                AND fiscalyear          = @it_acc-fiscalyear
-                AND companycode         = @it_acc-companycode
-                AND ledger = '0L'
-                AND accountingdocumenttype = 'RV'
-              INTO TABLE @DATA(it_acco).
-
-              IF it_acco IS NOT INITIAL.
-
-                SELECT FROM i_accountingdocumentjournal
-                FIELDS purchasingdocument,
-                       purchasingdocumentitem,
-                       accountingdocument,
-                       accountingdocumentitem,
-                       companycode,
-                       fiscalyear,
-                       glaccount,
-                       taxcode,
-                       ledger,
-                       postingdate,
-                       documentdate,
-                       documentreferenceid,
-                       transactiontypedetermination,
-                       accountingdocumenttype,
-                       creditamountincocodecrcy,
-                       debitamountinbalancetranscrcy,
-                       financialaccounttype,
-                       supplier,
-                       accountassignmenttype,
-                       debitcreditcode
-                   FOR ALL ENTRIES IN @it_acc
-                   WHERE documentreferenceid = @it_acc-documentreferenceid
-                   AND fiscalyear            = @it_acc-fiscalyear
-                   AND companycode           = @it_acc-companycode
-                   AND ledger = '0L'
-                   AND accountingdocumenttype = 'RE'
-                   AND postingdate            IN @lr_postingdt
-                   INTO TABLE @DATA(it_inbound).
-
-                IF  it_inbound IS NOT INITIAL.
-
-                  SELECT FROM i_operationalacctgdocitem
-                     FIELDS purchasingdocument,
-                            purchasingdocumentitem,
-                            accountingdocument,
-                            accountingdocumentitem,
-                            companycode,
-                            fiscalyear,
-                            glaccount,
-                            taxcode,
-                            postingdate,
-                            documentdate,
-                            transactiontypedetermination,
-                            accountingdocumenttype,
-                            financialaccounttype,
-                            supplier,
-                            taxabsltbaseamountincocodecrcy,
-                            absltamtinadditionalcurrency1
-                     FOR ALL ENTRIES IN @it_inbound
-                     WHERE accountingdocument  = @it_inbound-accountingdocument
-                       AND fiscalyear          = @it_inbound-fiscalyear
-                       AND companycode         = @it_inbound-companycode
-                       AND postingdate         IN @lr_postingdt
-                     INTO TABLE @DATA(it_acco_rv).
-
-                ENDIF.
-
-                SELECT FROM i_operationalacctgdocitem
-                FIELDS accountingdocument,
-                       companycode,
-                       fiscalyear,
-                       businessplace
-                FOR ALL ENTRIES IN @it_acco
-                WHERE fiscalyear  = @it_acco-fiscalyear
-                AND   companycode = @it_acco-companycode
-                AND   accountingdocument = @it_acco-accountingdocument
-                INTO TABLE @DATA(lt_operationalacctgdocitem).
-
-                SELECT FROM zzce_pur_tax_agg
-                FIELDS accountingdocument,
-                       amountintransactioncurrency,
-                       cgst,
-                       glaccount,
-                       igst,
-                       rmcgst,
-                       rmigst,
-                       rmsgst,
-                       rmugst,
-                       sgst,
-                       transactioncurrency,
-                       ugst,
-                       fiscalyear
-                FOR ALL ENTRIES IN @it_acco
-                WHERE accountingdocument = @it_acco-accountingdocument
-                AND fiscalyear           = @it_acco-fiscalyear
-                INTO TABLE @DATA(it_sto_tax).
-
-                SORT it_sto_tax BY accountingdocument.
-
-                SELECT FROM zce_pur_reg3
-                FIELDS accountingdocument,
-                       accountingdocumentitem,
-                       in_hsnorsaccode,
-                       transactiontypedetermination,
-                       fiscalyear
-                FOR ALL ENTRIES IN @it_acco
-                WHERE accountingdocument = @it_acco-accountingdocument
-                AND   companycode        = @it_acco-companycode
-                INTO TABLE @DATA(it_sto_hsn).
-
-                SORT it_sto_hsn BY accountingdocument.
-              ENDIF.
-
-            ENDIF.
-          ENDIF.
-        ENDIF.
-
-        DATA : lv_cgsttax            TYPE i_accountingdocumentjournal-creditamountincocodecrcy,
-               lv_sgsttax            TYPE i_accountingdocumentjournal-creditamountincocodecrcy,
-               lv_igsttax            TYPE i_accountingdocumentjournal-creditamountincocodecrcy,
-               lv_ugsttax            TYPE i_accountingdocumentjournal-creditamountincocodecrcy,
-               lv_net                TYPE i_accountingdocumentjournal-creditamountincocodecrcy,
-               lv_cgstgl             TYPE i_accountingdocumentjournal-glaccount,
-               lv_sgstgl             TYPE i_accountingdocumentjournal-glaccount,
-               lv_igstgl             TYPE i_accountingdocumentjournal-glaccount,
-               lv_ugstgl             TYPE i_accountingdocumentjournal-glaccount,
-               lv_taxcode            TYPE i_accountingdocumentjournal-taxcode,
-               lv_accountingdocument TYPE i_accountingdocumentjournal-accountingdocument,
-               lv_roundoff           TYPE i_accountingdocumentjournal-creditamountinbalancetranscrcy,
-               lv_txcd               TYPE i_accountingdocumentjournal-taxcode.
-
-        SORT : it_pur_hist      ASCENDING BY purchaseorder purchaseorderitem,
-               it_bill_doc_hist ASCENDING BY referencesddocument referencesddocumentitem,
-               it_acc           ASCENDING BY documentreferenceid,
-               it_acco          ASCENDING BY documentreferenceid purchasingdocument purchasingdocumentitem,
-               it_inbound       ASCENDING BY documentreferenceid,
-               it_sto_po        ASCENDING BY purchaseorder.
-
-        LOOP AT it_pur_hist ASSIGNING FIELD-SYMBOL(<lfs_pur_hist>).
-          IF <lfs_pur_hist>-purchaseorder             = '4800000499' AND
-             <lfs_pur_hist>-materialdocument          = '6225000418' AND
-             <lfs_pur_hist>-purchasinghistorydocument = '0080001444'.
-            CONTINUE.
-          ENDIF.
-          READ TABLE it_sto_po ASSIGNING FIELD-SYMBOL(<lfs_sto_po>) WITH KEY
-          purchaseorder = <lfs_pur_hist>-purchaseorder.
-          IF sy-subrc = 0.
-            LOOP AT it_bill_doc_hist ASSIGNING FIELD-SYMBOL(<lfs_bill_doc_hist>)
-             WHERE referencesddocument = <lfs_pur_hist>-purchasinghistorydocument AND
-             referencesddocumentitem = <lfs_pur_hist>-deliverydocumentitem.
-              READ TABLE it_acc ASSIGNING FIELD-SYMBOL(<lfs_acc>) WITH KEY documentreferenceid    = <lfs_bill_doc_hist>-billingdocument
-                                                                           purchasingdocument     = <lfs_pur_hist>-purchaseorder
-                                                                           purchasingdocumentitem = <lfs_pur_hist>-purchaseorderitem.
-              IF sy-subrc = 0.
-                READ TABLE it_acco INTO DATA(ls_acco) WITH KEY
-                                documentreferenceid    = <lfs_acc>-documentreferenceid
-                                purchasingdocument     = <lfs_acc>-purchasingdocument
-                                purchasingdocumentitem = <lfs_acc>-purchasingdocumentitem.
-                IF sy-subrc = 0.
-                  READ TABLE it_inbound INTO DATA(ls_inbound) WITH KEY documentreferenceid = <lfs_acc>-documentreferenceid.
-                  IF sy-subrc = 0.
-                    DATA(lv_ib_index) = sy-tabix.
-                  ELSE.
-                    CONTINUE.
-                  ENDIF.
-                  LOOP AT it_inbound ASSIGNING FIELD-SYMBOL(<lfs_acco>) FROM lv_ib_index  WHERE documentreferenceid = <lfs_acc>-documentreferenceid.
-                    DATA(lv_postingdt)  = <lfs_acco>-postingdate.
-                    DATA(lv_documentdt) = <lfs_acco>-documentdate.
-                    IF  <lfs_acco>-accountassignmenttype = 'EO'.
-**                      lv_net = lv_net + <lfs_acco>-creditamountincocodecrcy.
-                      IF  <lfs_acco>-debitcreditcode = 'H'.
-                        DATA(lv_salesgl)   = <lfs_acco>-glaccount.
-                      ENDIF.
-                    ELSEIF <lfs_acco>-accountassignmenttype = ' '.
-                      IF <lfs_acco>-taxcode IS NOT INITIAL.
-                        lv_accountingdocument = <lfs_acco>-accountingdocument.
-                        IF  <lfs_acco>-taxcode = 'C0' OR
-                        <lfs_acco>-taxcode = 'CB' OR
-                        <lfs_acco>-taxcode = 'C7' OR
-                        <lfs_acco>-taxcode = 'RC' OR
-                        <lfs_acco>-taxcode = 'CC' OR
-                        <lfs_acco>-taxcode = 'C4' OR
-                        <lfs_acco>-taxcode = 'RD' OR
-                        <lfs_acco>-taxcode = 'C8' OR
-                        <lfs_acco>-taxcode = 'CD' OR
-                        <lfs_acco>-taxcode = 'C1' OR
-                        <lfs_acco>-taxcode = 'RA' OR
-                        <lfs_acco>-taxcode = 'C5' OR
-                        <lfs_acco>-taxcode = 'A2' OR
-                        <lfs_acco>-taxcode = 'CA'.
-                          IF <lfs_acco>-glaccount     = '0000148000'.
-                            lv_igstgl                 = <lfs_acco>-glaccount.
-                            lv_taxcode                = <lfs_acco>-taxcode.
-                          ELSEIF <lfs_acco>-glaccount = '0000148001'.
-                            lv_ugstgl                 = <lfs_acco>-glaccount.
-                            lv_taxcode                = <lfs_acco>-taxcode.
-                          ELSEIF <lfs_acco>-glaccount = '0000148002'.
-                            lv_sgstgl                 = <lfs_acco>-glaccount.
-                            lv_taxcode                = <lfs_acco>-taxcode.
-                          ELSEIF <lfs_acco>-glaccount = '0000148003'.
-                            lv_cgstgl                 = <lfs_acco>-glaccount.
-                            lv_taxcode                = <lfs_acco>-taxcode.
-                          ENDIF.
-                        ENDIF.
-                      ENDIF.
-                    ENDIF.
-                  ENDLOOP.
-                ENDIF.
-
-                LOOP AT it_acco ASSIGNING <lfs_acco>                 WHERE
-                documentreferenceid    = <lfs_acc>-documentreferenceid AND
-                purchasingdocument     = <lfs_acc>-purchasingdocument  AND
-                purchasingdocumentitem = <lfs_acc>-purchasingdocumentitem.
-
-
-                  READ TABLE it_bill_doc_hist ASSIGNING FIELD-SYMBOL(<lfs_bill_amt>) WITH KEY
-                                                referencesddocument     = <lfs_pur_hist>-purchasinghistorydocument
-                                                referencesddocumentitem = <lfs_pur_hist>-deliverydocumentitem.
-                  IF sy-subrc IS INITIAL.
-                  ENDIF.
-
-                  IF  <lfs_acco>-accountassignmenttype = 'EO'.
-                    IF  <lfs_acco>-transactiontypedetermination IS INITIAL AND <lfs_acco>-taxcode IS INITIAL.
-                      lv_roundoff = lv_roundoff + <lfs_acco>-creditamountincocodecrcy.
-                    ELSE.
-                      lv_net = lv_net + <lfs_acco>-creditamountincocodecrcy.
-                      IF  <lfs_acco>-debitcreditcode = 'H'.
-                        lv_salesgl  = <lfs_acco>-glaccount.
-                      ENDIF.
-                    ENDIF.
-                  ELSEIF <lfs_acco>-accountassignmenttype = 'KS'.
-                    lv_roundoff = lv_roundoff + <lfs_acco>-creditamountincocodecrcy." + <lfs_acco>-debitamountinbalancetranscrcy.
-                  ELSEIF <lfs_acco>-accountassignmenttype = ' '.
-                    IF <lfs_acco>-transactiontypedetermination = 'JOC'.
-                      lv_cgsttax = lv_cgsttax + <lfs_acco>-creditamountincocodecrcy." + <lfs_acco>-debitamountinbalancetranscrcy.
-**                      lv_cgstgl  = <lfs_acco>-glaccount.
-**                      lv_taxcode = <lfs_acco>-taxcode.
-                    ELSEIF <lfs_acco>-transactiontypedetermination = 'JOS'.
-                      lv_sgsttax = lv_sgsttax + <lfs_acco>-creditamountincocodecrcy." + <lfs_acco>-debitamountinbalancetranscrcy.
-**                      lv_sgstgl  = <lfs_acco>-glaccount.
-**                      lv_taxcode = <lfs_acco>-taxcode.
-                    ELSEIF <lfs_acco>-transactiontypedetermination = 'JOI'.
-                      lv_igsttax = lv_igsttax + <lfs_acco>-creditamountincocodecrcy." + <lfs_acco>-debitamountinbalancetranscrcy.
-**                      lv_igstgl  = <lfs_acco>-glaccount.
-**                      lv_taxcode = <lfs_acco>-taxcode.
-
-                      lv_igsttax = <lfs_bill_amt>-taxamount.
-
-                    ELSEIF <lfs_acco>-transactiontypedetermination = 'JOU'.
-                      lv_ugsttax = lv_ugsttax + <lfs_acco>-creditamountincocodecrcy." + <lfs_acco>-debitamountinbalancetranscrcy.
-**                      lv_ugstgl  = <lfs_acco>-glaccount.
-**                      lv_taxcode = <lfs_acco>-taxcode.
-                    ENDIF.
-                  ENDIF.
-                ENDLOOP.
-
-                IF  lv_cgsttax LT 0.
-                  lv_cgsttax = lv_cgsttax * (  -1 ).
-                ENDIF.
-                IF  lv_sgsttax LT 0.
-                  lv_sgsttax = lv_sgsttax * (  -1 ).
-                ENDIF.
-                IF  lv_igsttax LT 0.
-                  lv_igsttax = lv_igsttax * (  -1 ).
-                ENDIF.
-                IF  lv_ugsttax LT 0.
-                  lv_ugsttax = lv_ugsttax * (  -1 ).
-                ENDIF.
-                IF  lv_net LT 0.
-                  lv_net = lv_net * (  -1 ).
-                ENDIF.
-                IF  lv_roundoff LT 0.
-                  lv_roundoff = lv_roundoff * (  -1 ).
-                ENDIF.
-
-                IF <lfs_acco> IS ASSIGNED.
-                  APPEND INITIAL LINE TO it_base ASSIGNING FIELD-SYMBOL(<lfs_it_base>).
-                  MOVE-CORRESPONDING <lfs_acco>     TO <lfs_it_base>.
-                  MOVE-CORRESPONDING <lfs_pur_hist> TO <lfs_it_base>.
-                  IF <lfs_acc>-isreversal IS NOT INITIAL OR <lfs_acc>-isreversed IS NOT INITIAL.
-                    <lfs_it_base>-reversalindicator = 'X'.
-                  ENDIF.
-                  <lfs_it_base>-accountingdocument          = lv_accountingdocument.
-                  <lfs_it_base>-documentdate                = lv_documentdt.
-                  <lfs_it_base>-postingdate                 = lv_postingdt.
-                  <lfs_it_base>-cgstgl                      = lv_cgstgl.
-                  <lfs_it_base>-sgstgl                      = lv_sgstgl.
-                  <lfs_it_base>-igstgl                      = lv_igstgl.
-                  <lfs_it_base>-ugstgl                      = lv_ugstgl.
-                  <lfs_it_base>-taxcode                     = lv_taxcode.
-                  <lfs_it_base>-purchaseorder               = <lfs_sto_po>-purchaseorder.
-                  <lfs_it_base>-purchaseorderitem           = <lfs_pur_hist>-purchaseorderitem.
-                  <lfs_it_base>-supplierinvoice             = <lfs_bill_doc_hist>-billingdocument.
-                  <lfs_it_base>-supplierinvoiceitem         = <lfs_bill_doc_hist>-billingdocumentitem.
-                  <lfs_it_base>-companycode                 = <lfs_acc>-companycode.
-                  <lfs_it_base>-invoicingparty              = <lfs_bill_doc_hist>-payerparty.
-                  <lfs_it_base>-plant                       = <lfs_bill_doc_hist>-plant.
-                  <lfs_it_base>-roundoff                    = lv_roundoff.
-                  <lfs_it_base>-fiscalyear                  = <lfs_acco>-fiscalyear.
-                  <lfs_it_base>-glaccount                   = lv_salesgl.
-                  <lfs_it_base>-accountingdocumentitem      = <lfs_acco>-accountingdocumentitem.
-                  <lfs_it_base>-invoicegrossamount          = <lfs_acco>-creditamountincocodecrcy.
-                  <lfs_it_base>-igst                        = lv_igsttax.
-                  <lfs_it_base>-cgst                        = lv_cgsttax.
-                  <lfs_it_base>-sgst                        = lv_sgsttax.
-                  <lfs_it_base>-ugst                        = lv_ugsttax.
-**                  <lfs_it_base>-supplierinvoiceitemamount   = lv_net.
-**                  <lfs_it_base>-invoicegrossamount          = ( lv_cgsttax + lv_sgsttax + lv_igsttax +  lv_net ) - lv_roundoff.
-                  <lfs_it_base>-supplierinvoiceitemamount   = <lfs_bill_amt>-netamount.
-                  <lfs_it_base>-invoicegrossamount          = ( <lfs_bill_amt>-netamount + <lfs_bill_amt>-taxamount ).
-
-                  <lfs_it_base>-documentcurrency            = 'INR'.
-                  <lfs_it_base>-exchangerate                = '1.00000'.
-                  <lfs_it_base>-quantityinpurchaseorderunit = <lfs_bill_doc_hist>-billingquantity.
-                  <lfs_it_base>-purchaseorderquantityunit   = <lfs_bill_doc_hist>-billingquantityunit.
-                  READ TABLE it_sto_tax ASSIGNING FIELD-SYMBOL(<lfs_sto_tax>) WITH KEY accountingdocument = <lfs_acc>-accountingdocument.
-                  IF sy-subrc = 0.
-                    <lfs_it_base>-rmcgst                      = <lfs_sto_tax>-rmcgst.
-                    <lfs_it_base>-rmigst                      = <lfs_sto_tax>-rmigst.
-                    <lfs_it_base>-rmsgst                      = <lfs_sto_tax>-rmsgst.
-                    <lfs_it_base>-rmugst                      = <lfs_sto_tax>-rmugst.
-**                    <lfs_it_base>-amountintransactioncurrency = <lfs_sto_tax>-amountintransactioncurrency.
-****                    <lfs_it_base>-supplierinvoiceitemamount   = <lfs_sto_tax>-amountintransactioncurrency.
-                    <lfs_it_base>-transactioncurrency         = <lfs_sto_tax>-transactioncurrency.
-                  ENDIF.
-                  READ TABLE it_sto_hsn ASSIGNING FIELD-SYMBOL(<lfs_sto_hsn>) WITH KEY accountingdocument = <lfs_acc>-accountingdocument BINARY SEARCH.
-                  IF sy-subrc = 0.
-                    <lfs_it_base>-in_hsnorsaccode              = <lfs_sto_hsn>-in_hsnorsaccode.
-                    <lfs_it_base>-transactiontypedetermination = <lfs_sto_hsn>-transactiontypedetermination.
-                  ENDIF.
-                  READ TABLE lt_operationalacctgdocitem ASSIGNING FIELD-SYMBOL(<lfs_operationalacctgdocitem>) WITH KEY companycode         = <lfs_acc>-companycode
-                                                                                                                        accountingdocument = <lfs_acc>-accountingdocument
-                                                                                                                         fiscalyear        = <lfs_acc>-fiscalyear.
-                  IF sy-subrc = 0.
-                    <lfs_it_base>-businessplace = <lfs_operationalacctgdocitem>-businessplace.
-                  ENDIF.
-                  READ TABLE it_acco ASSIGNING FIELD-SYMBOL(<lfs_acco_k>) WITH KEY documentreferenceid  = <lfs_acc>-documentreferenceid
-                                                                                   financialaccounttype = 'K'.
-                  IF sy-subrc = 0.
-                    <lfs_it_base>-invoicingparty = <lfs_acco_k>-supplier.
-                  ENDIF.
-                  <lfs_it_base>-amountintransactioncurrency = lv_net + lv_cgsttax + lv_sgsttax + lv_igsttax + lv_ugsttax.
-                ENDIF.
-              ENDIF.
-**            ENDIF.
-            ENDLOOP.
-          ENDIF.
-          CLEAR : lv_net, lv_cgsttax, lv_sgsttax, lv_sgsttax, lv_igsttax, lv_ugsttax, lv_roundoff, lv_documentdt,
-                  lv_cgstgl, lv_sgstgl, lv_igstgl, lv_ugstgl, lv_taxcode, lv_accountingdocument, lv_postingdt,
-                  lv_ib_index, lv_txcd.
-        ENDLOOP.
-
-      ENDIF.
-    ENDIF.
-
-    DELETE it_base WHERE purchaseorder IS INITIAL.
-*-----------------------------------------------------------------------
-* End of STO Process
-*-----------------------------------------------------------------------
-
     IF lr_accountingdocument IS NOT INITIAL.
       DELETE it_base WHERE accountingdocument NOT IN lr_accountingdocument[].
     ENDIF.
@@ -1008,6 +932,38 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
     ENDIF.
 
     IF it_base IS NOT INITIAL.
+
+      SELECT FROM i_accountingdocumentjournal
+       FIELDS purchasingdocument,
+              purchasingdocumentitem,
+              accountingdocument,
+              accountingdocumentitem,
+              companycode,
+              fiscalyear,
+              glaccount,
+              taxcode,
+              ledger,
+              postingdate,
+              documentdate,
+              documentreferenceid,
+              transactiontypedetermination,
+              accountingdocumenttype,
+              creditamountincocodecrcy,
+              debitamountincocodecrcy AS debitamountinbalancetranscrcy,
+              financialaccounttype,
+              supplier,
+              accountassignmenttype,
+              debitcreditcode,
+              referencedocument,
+              referencedocumentitem
+          FOR ALL ENTRIES IN @it_base
+          WHERE referencedocument = @it_base-materialdocument
+          AND fiscalyear          = @it_base-fiscalyear
+          AND companycode         = @it_base-companycode
+          AND ledger = '0L'
+          AND accountingdocumenttype       = 'WE'
+          AND transactiontypedetermination = 'WRX'
+          INTO TABLE @DATA(it_acc_we).
 
       SELECT FROM i_purchaseorderhistoryapi01
       FIELDS purchaseorder,
@@ -1148,30 +1104,83 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
       INTO TABLE @DATA(it_producttype).
     ENDIF.
 
-    IF it_po_type IS NOT INITIAL.
-
-      SELECT bptaxnumber,
-      businesspartner
-      FROM i_businesspartnertaxnumber
-      FOR ALL ENTRIES IN @it_po_type
-      WHERE businesspartner = @it_po_type-supplier
-      INTO TABLE @DATA(it_bp_tax).
-    ENDIF.
+**    IF it_po_type IS NOT INITIAL.
+**
+**      SELECT bptaxnumber,
+**      businesspartner
+**      FROM i_businesspartnertaxnumber
+**      FOR ALL ENTRIES IN @it_po_type
+**      WHERE businesspartner = @it_po_type-supplier
+**      INTO TABLE @DATA(it_bp_tax).
+**    ENDIF.
 
 *-------------------
 * Loop through main data table
+    DATA : lv_materialdocument TYPE i_materialdocumentitem_2-materialdocument,
+           lv_purchaseorder    TYPE i_materialdocumentitem_2-purchaseorder,
+           lv_purchaseitem     TYPE i_materialdocumentitem_2-purchaseorderitem.
+
     CLEAR : lt_response.
+
+    SORT it_base ASCENDING BY purchaseorder purchaseorderitem
+                              supplierinvoice supplierinvoiceitem
+                              materialdocument materialdocumentitem.
+
     LOOP AT it_base ASSIGNING FIELD-SYMBOL(<fs_base>).
 
       CLEAR ls_response.
       MOVE-CORRESPONDING <fs_base> TO ls_response.
+
       READ TABLE it_purchasehistory INTO DATA(ls_purchaseorderhistory) WITH KEY purchaseorder                 = ls_response-purchaseorder
                                                                                 purchaseorderitem             = ls_response-purchaseorderitem
-                                                                                purchasinghistorydocument     = ls_response-supplierinvoice
-                                                                                purchasinghistorydocumentitem = ls_response-supplierinvoiceitem.
+                                                                                purchasinghistorydocument     = ls_response-supplierinvoice.
+**                                                                                purchasinghistorydocumentitem = ls_response-supplierinvoiceitem.
       IF  sy-subrc = 0.
         ls_response-totalgoodsmvtamtincccrcy = ls_purchaseorderhistory-invoiceamtincocodecrcy.
+        ls_response-materialdocument         = ls_purchaseorderhistory-referencedocument.
+        ls_response-materialdocumentitem     = ls_purchaseorderhistory-referencedocumentitem.
       ENDIF.
+
+      SELECT SINGLE FROM i_accountingdocumentjournal
+      FIELDS accountingdocument,
+             accountingdocumentitem,
+             creditamountincocodecrcy,
+             debitcreditcode
+      WHERE referencedocument = @ls_response-materialdocument
+      AND fiscalyear          = @ls_response-fiscalyear
+      AND companycode         = @ls_response-companycode
+      AND ledger = '0L'
+      AND accountingdocumenttype       = 'WE'
+      AND transactiontypedetermination = 'WRX'
+      INTO @DATA(ls_acc_we).
+      IF sy-subrc = 0.
+        ls_response-we_materialdocument = ls_acc_we-accountingdocument.
+        IF ls_acc_we-debitcreditcode = 'H'.
+          ls_response-we_totalgoodsmvtamtincccrcy = ls_acc_we-creditamountincocodecrcy * ( -1 ).
+        ELSE.
+          ls_response-we_totalgoodsmvtamtincccrcy = ls_acc_we-creditamountincocodecrcy.
+        ENDIF.
+      ENDIF.
+
+**      READ TABLE it_acc_we INTO DATA(ls_acc_we) WITH KEY purchasingdocument     = <fs_base>-purchaseorder
+**                                                         purchasingdocumentitem = <fs_base>-purchaseorderitem
+**                                                         referencedocument      = ls_response-materialdocument. "<fs_base>-materialdocument.
+**      IF sy-subrc = 0.
+**        ls_response-we_materialdocument = ls_acc_we-accountingdocument.
+**        IF ls_acc_we-debitcreditcode = 'H'.
+**          ls_response-we_totalgoodsmvtamtincccrcy = ls_acc_we-creditamountincocodecrcy * ( -1 ).
+**        ELSE.
+**          ls_response-we_totalgoodsmvtamtincccrcy = ls_acc_we-creditamountincocodecrcy.
+**        ENDIF.
+**      ENDIF.
+
+      IF ( lv_materialdocument = ls_response-materialdocument ) AND
+         ( lv_purchaseorder    = ls_response-purchaseorder )    AND
+         ( lv_purchaseitem     = ls_response-purchaseorderitem ).
+        CLEAR : ls_response-we_materialdocument, ls_response-we_totalgoodsmvtamtincccrcy,
+                ls_response-totalgoodsmvtamtincccrcy, ls_response-quantityinbaseunit.
+      ENDIF.
+
       " ============ Map Key Fields ============
       ls_response-invoicingparty                = <fs_base>-invoicingparty.
       ls_response-companycode                   = <fs_base>-companycode.
@@ -1183,7 +1192,6 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
       ls_response-quantityinpurchaseorderunit   = <fs_base>-quantityinpurchaseorderunit.
       ls_response-purchaseorderquantityunit     = <fs_base>-purchaseorderquantityunit.
       ls_response-plant                         = <fs_base>-plant.
-*      ls_response-documentdate                  = <fs_base>-documentdate.
       ls_response-postingdate                   = <fs_base>-postingdate.
       ls_response-supplierinvoicewthnfiscalyear = <fs_base>-supplierinvoicewthnfiscalyear.
       ls_response-cgstglaccount                 = <fs_base>-cgstgl.
@@ -1211,13 +1219,13 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
       ls_response-displaycurrencyusd = 'USD'.
 
       " ============ Read Purchase Order Type ============
-      SORT it_po_type BY
-       purchaseorder.
-      READ TABLE it_po_type ASSIGNING FIELD-SYMBOL(<fs_po_type>)
-        WITH KEY purchaseorder = <fs_base>-purchaseorder.
-      IF sy-subrc = 0 AND ( <fs_po_type>-purchaseordertype = 'ZUB' OR <fs_po_type>-purchaseordertype = 'ZST' ).
-        ls_response-notes = |STO - { <fs_po_type>-purchaseordertype }|.
-      ENDIF.
+**      SORT it_po_type BY
+**       purchaseorder.
+**      READ TABLE it_po_type ASSIGNING FIELD-SYMBOL(<fs_po_type>)
+**        WITH KEY purchaseorder = <fs_base>-purchaseorder.
+**      IF sy-subrc = 0 AND ( <fs_po_type>-purchaseordertype = 'ZUB' OR <fs_po_type>-purchaseordertype = 'ZST' ).
+**        ls_response-notes = |STO - { <fs_po_type>-purchaseordertype }|.
+**      ENDIF.
 
       " ============ Read Supplier Data ============
       SORT it_supplier BY
@@ -1229,17 +1237,6 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
         ls_response-cityname     = <fs_supplier>-cityname.
         ls_response-address      = <fs_supplier>-bpaddrstreetname.
         ls_response-supplierpan  = <fs_supplier>-businesspartnerpannumber.
-      ENDIF.
-
-      " ============ Read MSME Data ============
-      IF <fs_po_type> IS ASSIGNED.
-        SORT it_bp_iden BY
-         businesspartner.
-        READ TABLE it_bp_iden ASSIGNING FIELD-SYMBOL(<fs_bp_iden>)
-          WITH KEY businesspartner = <fs_po_type>-supplier.
-        IF sy-subrc = 0.
-          ls_response-msme = <fs_bp_iden>-bpidentificationnumber.
-        ENDIF.
       ENDIF.
 
       " ============ Read Purchase Order Item Data ============
@@ -1299,8 +1296,9 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
         ls_response-accountingdocumenttype       = <fs_journal>-accountingdocumenttype.
         IF <fs_journal>-isreversal = 'X'.  "isreversed = 'X'. "Changes by rutikk 20.03.2026
           lv_is_reversed = abap_true.
-          ls_response-totalgoodsmvtamtincccrcy = ls_response-totalgoodsmvtamtincccrcy * ( -1 ).
-          ls_response-quantityinbaseunit       = ls_response-quantityinbaseunit * ( -1 ).
+          ls_response-totalgoodsmvtamtincccrcy    = ls_response-totalgoodsmvtamtincccrcy * ( -1 ).
+          ls_response-quantityinbaseunit          = ls_response-quantityinbaseunit * ( -1 ).
+          ls_response-we_totalgoodsmvtamtincccrcy = ls_response-we_totalgoodsmvtamtincccrcy * ( -1 ).
         ENDIF.
       ENDIF.
 
@@ -1355,15 +1353,15 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
       ENDIF.
 
       " ============ Read Business Partner Tax Number (GSTIN) ============
-      IF <fs_po_type> IS ASSIGNED.
-        SORT it_bp_tax BY
-         businesspartner.
-        READ TABLE it_bp_tax ASSIGNING FIELD-SYMBOL(<fs_bp_tax>)
-          WITH KEY businesspartner = <fs_po_type>-supplier.
-        IF sy-subrc = 0.
-          ls_response-bptaxnumber = <fs_bp_tax>-bptaxnumber.
-        ENDIF.
-      ENDIF.
+**      IF <fs_po_type> IS ASSIGNED.
+**        SORT it_bp_tax BY
+**         businesspartner.
+**        READ TABLE it_bp_tax ASSIGNING FIELD-SYMBOL(<fs_bp_tax>)
+**          WITH KEY businesspartner = <fs_po_type>-supplier.
+**        IF sy-subrc = 0.
+**          ls_response-bptaxnumber = <fs_bp_tax>-bptaxnumber.
+**        ENDIF.
+**      ENDIF.
 
       " ============ Map Plant GSTIN Based on Company Code and Business Place ============
       IF <fs_base>-companycode = 'MPPL'.
@@ -1389,37 +1387,37 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
       DATA(lv_reversal_factor) = COND #( WHEN lv_is_reversed = abap_true THEN -1 ELSE 1 ).
 
       " Invoice Gross Amount (INR)
-      IF <fs_po_type> IS ASSIGNED.
-
-        IF <fs_po_type>-purchaseordertype = 'ZUB' OR <fs_po_type>-purchaseordertype = 'ZST'.
-          ls_response-invoicegrossamount = COND #(
-             WHEN <fs_base>-documentcurrency = 'INR'
-             THEN <fs_base>-invoicegrossamount
-             WHEN <fs_base>-documentcurrency = 'USD'
-             THEN <fs_base>-invoicegrossamount * <fs_base>-exchangerate
-             ELSE 0
+**      IF <fs_po_type> IS ASSIGNED.
+**
+**        IF <fs_po_type>-purchaseordertype = 'ZUB' OR <fs_po_type>-purchaseordertype = 'ZST'.
+**          ls_response-invoicegrossamount = COND #(
+**             WHEN <fs_base>-documentcurrency = 'INR'
+**             THEN <fs_base>-invoicegrossamount
+**             WHEN <fs_base>-documentcurrency = 'USD'
+**             THEN <fs_base>-invoicegrossamount " * <fs_base>-exchangerate "24.03.2026
+**             ELSE 0
+***       ) * lv_reversal_factor.
+**            ).
+**        ELSE.
+**          ls_response-invoicegrossamount = COND #(
+**             WHEN <fs_base>-documentcurrency = 'INR'
+**             THEN <fs_base>-amountintransactioncurrency
+**             WHEN <fs_base>-documentcurrency = 'USD'
+**             THEN <fs_base>-amountintransactioncurrency " * <fs_base>-exchangerate "24.03.2026
+**             ELSE 0
+***       ) * lv_reversal_factor.
+**            ).
+**        ENDIF.
+**      ELSE.
+      ls_response-invoicegrossamount = COND #(
+         WHEN <fs_base>-documentcurrency = 'INR'
+         THEN <fs_base>-amountintransactioncurrency
+         WHEN <fs_base>-documentcurrency = 'USD'
+         THEN <fs_base>-amountintransactioncurrency " * <fs_base>-exchangerate "24.03.2026
+         ELSE 0
 *       ) * lv_reversal_factor.
-            ).
-        ELSE.
-          ls_response-invoicegrossamount = COND #(
-             WHEN <fs_base>-documentcurrency = 'INR'
-             THEN <fs_base>-amountintransactioncurrency
-             WHEN <fs_base>-documentcurrency = 'USD'
-             THEN <fs_base>-amountintransactioncurrency * <fs_base>-exchangerate
-             ELSE 0
-*       ) * lv_reversal_factor.
-            ).
-        ENDIF.
-      ELSE.
-        ls_response-invoicegrossamount = COND #(
-           WHEN <fs_base>-documentcurrency = 'INR'
-           THEN <fs_base>-amountintransactioncurrency
-           WHEN <fs_base>-documentcurrency = 'USD'
-           THEN <fs_base>-amountintransactioncurrency * <fs_base>-exchangerate
-           ELSE 0
-*       ) * lv_reversal_factor.
-          ).
-      ENDIF.
+        ).
+**      ENDIF.
       " Invoice Amount (INR only)
 *      ls_response-invoiceamount = COND #(
 *         WHEN <fs_base>-documentcurrency = 'INR'
@@ -1448,7 +1446,7 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
            WHEN <fs_base>-documentcurrency = 'INR'
            THEN <fs_base>-supplierinvoiceitemamount
            WHEN <fs_base>-documentcurrency <> 'INR'
-           THEN <fs_base>-supplierinvoiceitemamount * <fs_base>-exchangerate
+           THEN <fs_base>-supplierinvoiceitemamount " * <fs_base>-exchangerate "24.03.2026
            ELSE 0
          ) * lv_reversal_factor.
       ENDIF.
@@ -1616,6 +1614,17 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
         ls_response-chacharge = ls_response-chacharge + ls_supplierinvitem-supplierinvoiceitemamount.
       ENDIF.
 
+      "24.03.2026
+      IF ( lv_purchaseorder = ls_response-purchaseorder ) AND ( lv_purchaseitem = ls_response-purchaseorderitem ).
+        CLEAR : ls_response-chacharge, ls_response-custdcharge, ls_response-swscharge,
+                ls_response-otherexp, ls_response-insuranceusd, ls_response-inscharge,
+                ls_response-impfcharge.
+      ENDIF.
+
+      lv_materialdocument = ls_response-materialdocument.
+      lv_purchaseorder    = ls_response-purchaseorder.
+      lv_purchaseitem     = ls_response-purchaseorderitem.
+      "24.03.2026
 
       " ============ Calculate GST Amounts (Excluding RCM Tax Codes) ============
       " CGST Amount
@@ -1687,10 +1696,10 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
       IF <fs_base>-documentcurrency = 'INR'.
         ls_response-totaltax = ( lv_base_amount + lv_parking_amount ) * lv_reversal_factor.
       ELSEIF <fs_base>-documentcurrency = 'USD'.
-        ls_response-totaltax = ( lv_base_amount + lv_parking_amount ) *
-                             <fs_base>-exchangerate * lv_reversal_factor.
+        ls_response-totaltax = ( lv_base_amount + lv_parking_amount ) * lv_reversal_factor.
+        " <fs_base>-exchangerate * lv_reversal_factor. "23.03.2026
 
-        ls_response-totaltax1 = ( lv_base_amount + lv_parking_amount ) * lv_reversal_factor.
+        ls_response-totaltax1 = ( ( lv_base_amount + lv_parking_amount ) * lv_reversal_factor ) / <fs_base>-exchangerate.
 
       ENDIF.
 
@@ -1734,12 +1743,15 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
       WHERE glaccount = @ls_response-ugstglaccount
       INTO @ls_response-ugstglaccountname.
 
+**      IF <fs_base>-documentcurrency <> 'INR'.
+**        ls_response-amountintransactioncurrency = ls_response-amountintransactioncurrency * <fs_base>-exchangerate.
+**      ENDIF.
       " ============ Append to Final Table ============
       APPEND ls_response TO lt_response.
 
     ENDLOOP.
-    CLEAR : it_base, it_acc, it_acco, it_acc_journal, it_bill_doc_hist,
-            it_pur_hist, it_bp_tax, it_gl, ls_purchaseorderhistory.
+    CLEAR : it_base, it_acc_journal,
+             it_gl, ls_purchaseorderhistory." ls_acc_we.
 *-----------------------------------------------------------------------
 * Pagination
 *-----------------------------------------------------------------------
@@ -1753,6 +1765,7 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
       fiscalyear
       supplierinvoice
       supplierinvoiceitem
+*      materialdocument   "" Added HC 25.03.2026
       purchaseorder
       purchaseorderitem
       supplier
@@ -1767,6 +1780,7 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
       fiscalyear
       supplierinvoice
       supplierinvoiceitem
+*      materialdocument   "" Added HC 25.03.2026
       purchaseorder
       purchaseorderitem
       supplier
@@ -1774,6 +1788,63 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
       documentdate
       postingdate
       supplierinvoicewthnfiscalyear.
+
+    SORT lt_response BY accountingdocument igstglaccount igstamt.
+
+DATA: lt_igst   LIKE lt_response,
+      lt_others LIKE lt_response.
+
+LOOP AT lt_response INTO DATA(ls_response1).
+  IF ls_response1-igstglaccount = '0000148000'.
+    APPEND ls_response1 TO lt_igst.
+  ELSE.
+    APPEND ls_response1 TO lt_others.
+  ENDIF.
+ENDLOOP.
+
+SORT lt_igst BY accountingdocument igstglaccount igstamt.
+DELETE ADJACENT DUPLICATES FROM lt_igst
+  COMPARING accountingdocument igstglaccount igstamt.
+
+CLEAR lt_response.
+APPEND LINES OF lt_igst   TO lt_response.
+APPEND LINES OF lt_others TO lt_response.
+
+*SORT lt_response BY accountingdocument igstglaccount igstamt.
+*    SORT lt_response BY accountingdocument igstglaccount igstamt .
+*    DELETE ADJACENT DUPLICATES FROM lt_response COMPARING accountingdocument igstglaccount igstamt .
+
+
+*    SORT lt_response BY accountingdocument igstglaccount igstamt.
+*
+*    DATA(lt_temp) = lt_response.
+
+
+*
+*    DELETE lt_temp WHERE igstamt IS INITIAL.
+*
+*    DELETE ADJACENT DUPLICATES FROM lt_temp
+*      COMPARING accountingdocument igstglaccount igstamt.
+*
+*    DELETE lt_response WHERE igstamt IS NOT INITIAL.
+*
+*    APPEND LINES OF lt_temp TO lt_response.
+
+
+    SORT lt_response BY
+    invoicingparty
+    companycode
+    fiscalyear
+    supplierinvoice
+    supplierinvoiceitem
+*      materialdocument   "" Added HC 25.03.2026
+    purchaseorder
+    purchaseorderitem
+    supplier
+    plant
+    documentdate
+    postingdate
+    supplierinvoicewthnfiscalyear.
 
     " =====================================================
     " Existing logic (keep as-is)
@@ -1797,4 +1868,3 @@ CLASS zcl_purchase_register_new IMPLEMENTATION.
 
   ENDMETHOD.
 ENDCLASS.
-
